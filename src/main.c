@@ -15,8 +15,8 @@ int main(int argc, char** argv)
     SDL_Window* window = SDL_CreateWindow("brst",
                                           SDL_WINDOWPOS_UNDEFINED,
                                           SDL_WINDOWPOS_UNDEFINED,
-                                          1024,
-                                          576,
+                                          1920,
+                                          1080,
                                           SDL_WINDOW_SHOWN);
     if(!window)
     {
@@ -30,14 +30,17 @@ int main(int argc, char** argv)
     }
 
     struct board* board = board_create();
-    struct view* view = view_create(board, renderer, 1024 / 16, 576 / 16);
+    struct view* view = view_create(board, renderer);
 
-    board_set_pixel(board, 10, 10, PIXEL_WIRE);
-    board_set_pixel(board, 20, 10, PIXEL_AND);
-    board_set_pixel(board, 10, 20, PIXEL_OR);
-    board_set_pixel(board, 20, 20, PIXEL_NOT);
+    for(int x = 0; x < 1920 / 32; ++x)
+    {
+        for(int y = 0; y < 1080 / 32; ++y)
+        {
+            board_set_pixel(board, x * 32, y * 32, PIXEL_WIRE);
+        }
+    }
 
-    view_redraw(view, 0, 0);
+    view_redraw(view);
 
     SDL_Event event;
     int running = 1;
@@ -55,7 +58,7 @@ int main(int argc, char** argv)
         }
 
         SDL_RenderClear(renderer);
-        SDL_RenderCopy(renderer, view->texture, NULL, NULL);
+        view_render(view);
         SDL_RenderPresent(renderer);
     }
 

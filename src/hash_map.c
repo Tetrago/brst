@@ -2,18 +2,22 @@
 
 #include <string.h>
 
-#define ENTRY_KEY(entry) ((hash_map_key_t*)(entry))
-#define ENTRY_VALUE(entry) ((uint8_t*)(entry) + sizeof(hash_map_key_t))
-#define ENTRY_NEXT(entry, stride) (void**)((uint8_t*)(entry) + (stride) - sizeof(void*))
+#define ADDR_VALUE(entry) (void*)(((uint8_t*)(entry)) + sizeof(struct hash_map_entry))
+
+struct hash_map_entry
+{
+    hash_map_key_t key;                        /** Key of this element */
+    struct hash_map_entry* next;               /** Next entry or NULL. When NULL, this entry stores no value */
+};
 
 struct hash_map* hash_map_create(size_t element_size)
 {
     struct hash_map* hash_map = malloc(sizeof(struct hash_map));
-    hash_map->stride = element_size + sizeof(hash_map_key_t) + sizeof(void*);
+    hash_map->stride = sizeof(struct hash_map_entry) + element_size;
     hash_map->capacity = 256;
     hash_map->size = 0;
     hash_map->allocator = allocator_create(hash_map->stride * hash_map->capacity);
-    hash_map->map = allocator_new(hash_map->allocator, hash_map->capacity);
+    hash_map->map = allocator_new(hash_map->allocator, hash_map->stride * hash_map->capacity);
 
     memset(hash_map->map, 0, hash_map->stride * hash_map->capacity);
     return hash_map;
@@ -25,14 +29,14 @@ void hash_map_destroy(struct hash_map* hash_map)
     free(hash_map);
 }
 
-static void* traverse(struct hash_map* hash_map, hash_map_key_t key)
+static struct hash_map_entry* traverse(struct hash_map* hash_map, hash_map_key_t key)
 {
-    void* entry = &hash_map->map[hash_map->stride * (key % hash_map->capacity)];
+    struct hash_map_entry* entry = (struct hash_map_entry*)&hash_map->map[hash_map->stride * (key % hash_map->capacity)];
 
     // While there is a new entry
-    while(*ENTRY_KEY(entry) != key && ENTRY_NEXT(entry, hash_map->stride))
+    while(entry->key != key && entry->next)
     {
-        entry = *ENTRY_NEXT(entry, hash_map->stride);
+        entry = entry->next;
     }
 
     return entry;
@@ -40,29 +44,61 @@ static void* traverse(struct hash_map* hash_map, hash_map_key_t key)
 
 void* hash_map_get(struct hash_map* hash_map, hash_map_key_t key)
 {
-    return traverse(hash_map, key) + sizeof(hash_map_key_t);
+    struct hash_map_entry* entry = traverse(hash_map, key);
+    if(!entry->next)
+    {
+        return NULL;
+    }
+
+    return ADDR_VALUE(entry);
 }
 
 void* hash_map_insert(struct hash_map* hash_map, hash_map_key_t key)
 {
-    void* entry = traverse(hash_map, key);
+    struct hash_map_entry* entry = traverse(hash_map, key);
 
     // If the found entry was set, return it
-    if(ENTRY_NEXT(entry, hash_map->stride))
+    if(entry->next)
     {
-        return ENTRY_VALUE(entry);
+        return ADDR_VALUE(entry);
     }
 
+    ++hash_map->size;
+
     // Create and zero a new end entry
-    void* next = allocator_new(hash_map->allocator, hash_map->stride);
+    struct hash_map_entry* next = allocator_new(hash_map->allocator, hash_map->stride);
     memset(next, 0, hash_map->stride);
 
-    // Update entry with new end
-    *ENTRY_NEXT(entry, hash_map->stride) = next;
+    entry->key = key;
+    entry->next = next;
 
-    // Update entry with key
-    *ENTRY_KEY(entry) = key;
+    return ADDR_VALUE(entry);
+}
 
-    // Return new value
-    return ENTRY_VALUE(entry);
+void hash_map_iter(struct hash_map* hash_map, struct hash_map_iterator* iterator)
+{
+    iterator->hash_map = hash_map;
+    iterator->index = 0;
+    iterator->entry = (struct hash_map_entry*)iterator->hash_map->map;
+}
+
+void* hash_map_next(struct hash_map_iterator* iterator)
+{
+    // While the current entry is invalid
+    while(!iterator->entry->next)
+    {
+        // Move to the next linked list
+        if(++iterator->index == iterator->hash_map->capacity)
+        {
+            // If we've moved past the last linked list, there are no more items
+            return NULL;
+        }
+
+        // Move to the next linked list
+        iterator->entry = (struct hash_map_entry*)&iterator->hash_map->map[iterator->index * iterator->hash_map->stride];
+    }
+
+    void* ret = ADDR_VALUE(iterator->entry);
+    iterator->entry = iterator->entry->next;
+    return ret;
 }

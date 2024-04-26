@@ -2,7 +2,7 @@
 #define BRST_TILE_H
 
 #ifndef TILE_SIZE
-#define TILE_SIZE 64
+#define TILE_SIZE 256
 #endif
 
 #include <stdint.h>
@@ -16,10 +16,23 @@
 typedef int32_t tile_coord_t;
 
 /**
+ * \brief          Hashes a coordinate into a value used by the tile_store
+ * \param[in]      x: Signed x coordinate
+ * \param[in]      y: Signed y coordinate
+ * \return         Hashed coordinate
+ */
+inline hash_map_key_t hash_xy(tile_coord_t x, tile_coord_t y)
+{
+    return ((uint64_t)x << 32) | y;
+}
+
+/**
  * \brief          Node container
  */
 struct tile
 {
+    tile_coord_t x;
+    tile_coord_t y;
     pixel_t pixels[TILE_SIZE * TILE_SIZE];
 };
 
